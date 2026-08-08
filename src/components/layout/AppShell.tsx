@@ -14,9 +14,9 @@ function ShellBody({ children }: { children: ReactNode }) {
       <main className="flex-1 overflow-x-hidden">
         <div className="mx-auto max-w-7xl px-6 py-8 lg:px-10">
           {error ? (
-            <div className="mb-6 border border-rose-900/60 bg-rose-950/30 px-4 py-3 text-sm text-rose-200">
+            <div className="mb-6 border border-pink-800/70 bg-pink-950/40 px-4 py-3 text-sm text-pink-100">
               <p className="font-medium">Couldn’t sync with Supabase</p>
-              <p className="mt-1 text-rose-200/80">{error}</p>
+              <p className="mt-1 text-pink-200/80">{error}</p>
               <div className="mt-3">
                 <Button
                   size="sm"

@@ -4,11 +4,11 @@ import { cn } from "@/lib/utils";
 
 const statusStyles: Record<ContentStatus, string> = {
   idea: "bg-ink-800 text-ink-200",
-  developing: "bg-sky-950 text-sky-200",
-  ready_to_produce: "bg-amber-950 text-amber-200",
-  produced: "bg-violet-950 text-violet-200",
-  scheduled: "bg-copper/15 text-copper-bright",
-  published: "bg-emerald-950 text-emerald-200",
+  developing: "bg-fuchsia-950 text-fuchsia-200",
+  ready_to_produce: "bg-pink-950 text-pink-200",
+  produced: "bg-purple-950 text-purple-200",
+  scheduled: "bg-copper/20 text-copper-bright",
+  published: "bg-violet-950 text-violet-200",
 };
 
 const priorityStyles: Record<ContentPriority, string> = {

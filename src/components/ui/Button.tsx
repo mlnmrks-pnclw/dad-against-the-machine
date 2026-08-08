@@ -11,7 +11,7 @@ const variants: Record<Variant, string> = {
     "bg-ink-850 text-ink-100 hover:bg-ink-800 border border-ink-700",
   ghost: "bg-transparent text-ink-200 hover:bg-ink-850 border border-transparent",
   danger:
-    "bg-transparent text-rose-300 hover:bg-rose-950/40 border border-rose-900/60",
+    "bg-transparent text-pink-300 hover:bg-pink-950/40 border border-pink-800/60",
 };
 
 const sizes: Record<Size, string> = {

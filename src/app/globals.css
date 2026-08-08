@@ -1,21 +1,25 @@
 @import "tailwindcss";
 
 :root {
-  --ink-950: #0b0d10;
-  --ink-925: #101318;
-  --ink-900: #151922;
-  --ink-850: #1c222d;
-  --ink-800: #262d3a;
-  --ink-700: #3a4354;
-  --ink-600: #556070;
-  --ink-500: #7a8494;
-  --ink-400: #9aa3b2;
-  --ink-300: #c2c8d2;
-  --ink-200: #d9dee6;
-  --ink-100: #eceff3;
-  --ink-50: #f7f8fa;
-  --copper: #b9855a;
-  --copper-bright: #d4a574;
+  /* Deep plum surfaces */
+  --ink-950: #120617;
+  --ink-925: #1a0b22;
+  --ink-900: #24112e;
+  --ink-850: #2f173c;
+  --ink-800: #3d214d;
+  --ink-700: #5a3470;
+  --ink-600: #7a4a94;
+  --ink-500: #9b6bb3;
+  --ink-400: #b98ccc;
+  --ink-300: #d2aee0;
+  --ink-200: #e6cdf0;
+  --ink-100: #f3e4f8;
+  --ink-50: #fbf4fd;
+
+  /* Pink accents */
+  --copper: #e879b9;
+  --copper-bright: #f9a8d4;
+
   --background: var(--ink-925);
   --foreground: var(--ink-100);
 }
@@ -52,7 +56,10 @@ body {
 }
 
 body {
-  background: var(--background);
+  background:
+    radial-gradient(1200px 600px at 10% -10%, rgba(192, 38, 211, 0.22), transparent 55%),
+    radial-gradient(900px 500px at 100% 0%, rgba(236, 72, 153, 0.18), transparent 50%),
+    var(--background);
   color: var(--foreground);
   font-family: var(--font-ibm-plex), "Segoe UI", sans-serif;
 }
