@@ -1,0 +1,68 @@
+@import "tailwindcss";
+
+:root {
+  --ink-950: #0b0d10;
+  --ink-925: #101318;
+  --ink-900: #151922;
+  --ink-850: #1c222d;
+  --ink-800: #262d3a;
+  --ink-700: #3a4354;
+  --ink-600: #556070;
+  --ink-500: #7a8494;
+  --ink-400: #9aa3b2;
+  --ink-300: #c2c8d2;
+  --ink-200: #d9dee6;
+  --ink-100: #eceff3;
+  --ink-50: #f7f8fa;
+  --copper: #b9855a;
+  --copper-bright: #d4a574;
+  --background: var(--ink-925);
+  --foreground: var(--ink-100);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-ink-950: var(--ink-950);
+  --color-ink-925: var(--ink-925);
+  --color-ink-900: var(--ink-900);
+  --color-ink-850: var(--ink-850);
+  --color-ink-800: var(--ink-800);
+  --color-ink-700: var(--ink-700);
+  --color-ink-600: var(--ink-600);
+  --color-ink-500: var(--ink-500);
+  --color-ink-400: var(--ink-400);
+  --color-ink-300: var(--ink-300);
+  --color-ink-200: var(--ink-200);
+  --color-ink-100: var(--ink-100);
+  --color-ink-50: var(--ink-50);
+  --color-copper: var(--copper);
+  --color-copper-bright: var(--copper-bright);
+  --font-sans: var(--font-ibm-plex);
+  --font-mono: var(--font-ibm-mono);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-ibm-plex), "Segoe UI", sans-serif;
+}
+
+::selection {
+  background: color-mix(in oklab, var(--copper) 45%, transparent);
+  color: var(--ink-50);
+}
+
+input[type="date"],
+input[type="datetime-local"] {
+  color-scheme: dark;
+}
