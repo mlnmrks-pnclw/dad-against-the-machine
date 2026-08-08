@@ -6,17 +6,27 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
 import { FORMATS } from "@/lib/constants";
-import { loadLocalData, saveLocalData } from "@/lib/store/local-store";
+import {
+  createIdeaRecord,
+  createScheduledPostRecord,
+  deleteIdeaRecord,
+  deleteScheduledPostRecord,
+  loadAllData,
+  updateIdeaRecord,
+  updatePillarRecord,
+  updateScheduledPostRecord,
+  upsertVariationRecord,
+} from "@/lib/supabase/repository";
 import type {
   AppData,
   ContentFormat,
   ContentPillar,
   ContentPlatform,
-  ContentPriority,
   ContentStatus,
   ContentVariation,
   Idea,
@@ -37,6 +47,7 @@ interface ScheduleInput {
 
 interface ContentStoreValue {
   ready: boolean;
+  error: string | null;
   pillars: ContentPillar[];
   ideas: Idea[];
   variations: ContentVariation[];
@@ -46,18 +57,28 @@ interface ContentStoreValue {
   getVariationsForIdea: (ideaId: string) => ContentVariation[];
   filterIdeas: (filters: IdeaFilters) => Idea[];
   filterLibrary: (filters: LibraryFilters) => Idea[];
-  createIdea: (input: IdeaInput) => Idea;
-  updateIdea: (id: string, patch: Partial<IdeaInput & { status: ContentStatus }>) => void;
-  deleteIdea: (id: string) => void;
-  setIdeaStatus: (id: string, status: ContentStatus) => void;
-  updateVariation: (ideaId: string, format: ContentFormat, body: string) => void;
-  schedulePost: (input: ScheduleInput) => ScheduledPost;
+  createIdea: (input: IdeaInput) => Promise<Idea>;
+  updateIdea: (
+    id: string,
+    patch: Partial<IdeaInput & { status: ContentStatus }>,
+  ) => Promise<void>;
+  deleteIdea: (id: string) => Promise<void>;
+  setIdeaStatus: (id: string, status: ContentStatus) => Promise<void>;
+  updateVariation: (
+    ideaId: string,
+    format: ContentFormat,
+    body: string,
+  ) => void;
+  schedulePost: (input: ScheduleInput) => Promise<ScheduledPost>;
   updateScheduledPost: (
     id: string,
-    patch: Partial<Pick<ScheduledPost, "scheduledAt" | "status" | "platform" | "format" | "title">>,
-  ) => void;
-  deleteScheduledPost: (id: string) => void;
-  updatePillar: (id: string, name: string) => void;
+    patch: Partial<
+      Pick<ScheduledPost, "scheduledAt" | "status" | "platform" | "format" | "title">
+    >,
+  ) => Promise<void>;
+  deleteScheduledPost: (id: string) => Promise<void>;
+  updatePillar: (id: string, name: string) => Promise<void>;
+  reload: () => Promise<void>;
 }
 
 const ContentStoreContext = createContext<ContentStoreValue | null>(null);
@@ -84,20 +105,53 @@ function ensureVariations(ideaId: string, existing: ContentVariation[]) {
 
 export function ContentStoreProvider({ children }: { children: ReactNode }) {
   const [data, setData] = useState<AppData | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [ready, setReady] = useState(false);
+  const dataRef = useRef<AppData | null>(null);
+  const variationTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(
+    new Map(),
+  );
 
   useEffect(() => {
-    setData(loadLocalData());
+    dataRef.current = data;
+  }, [data]);
+
+  const reload = useCallback(async () => {
+    try {
+      setError(null);
+      const next = await loadAllData();
+      setData(next);
+      setReady(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load data");
+      setReady(false);
+    }
   }, []);
 
   useEffect(() => {
-    if (data) saveLocalData(data);
-  }, [data]);
+    let cancelled = false;
 
-  const updateData = useCallback((updater: (current: AppData) => AppData) => {
-    setData((current) => {
-      if (!current) return current;
-      return updater(current);
-    });
+    (async () => {
+      try {
+        const next = await loadAllData();
+        if (!cancelled) {
+          setData(next);
+          setError(null);
+          setReady(true);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Failed to load data");
+          setReady(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      variationTimers.current.forEach((timer) => clearTimeout(timer));
+      variationTimers.current.clear();
+    };
   }, []);
 
   const getIdea = useCallback(
@@ -220,74 +274,81 @@ export function ContentStoreProvider({ children }: { children: ReactNode }) {
     [data],
   );
 
-  const createIdea = useCallback(
-    (input: IdeaInput) => {
-      const timestamp = nowIso();
-      const idea: Idea = {
-        id: createId(),
-        title: input.title.trim(),
-        coreMessage: input.coreMessage?.trim() ?? "",
-        pillarId: input.pillarId,
-        status: input.status ?? "idea",
-        priority: input.priority ?? "medium",
-        notes: input.notes?.trim() ?? "",
-        createdAt: timestamp,
-        updatedAt: timestamp,
-      };
-
-      const variations = ensureVariations(idea.id, []);
-
-      updateData((current) => ({
-        ...current,
-        ideas: [idea, ...current.ideas],
-        variations: [...current.variations, ...variations],
-      }));
-
+  const createIdea = useCallback(async (input: IdeaInput) => {
+    try {
+      const { idea, variations } = await createIdeaRecord(input);
+      setData((current) =>
+        current
+          ? {
+              ...current,
+              ideas: [idea, ...current.ideas],
+              variations: [...current.variations, ...variations],
+            }
+          : current,
+      );
+      setError(null);
       return idea;
-    },
-    [updateData],
-  );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to create idea";
+      setError(message);
+      throw err;
+    }
+  }, []);
 
   const updateIdea = useCallback(
-    (id: string, patch: Partial<IdeaInput & { status: ContentStatus }>) => {
-      updateData((current) => ({
-        ...current,
-        ideas: current.ideas.map((idea) => {
-          if (idea.id !== id) return idea;
-          return {
-            ...idea,
-            title: patch.title?.trim() ?? idea.title,
-            coreMessage:
-              patch.coreMessage !== undefined
-                ? patch.coreMessage.trim()
-                : idea.coreMessage,
-            pillarId: patch.pillarId ?? idea.pillarId,
-            status: patch.status ?? idea.status,
-            priority: (patch.priority as ContentPriority | undefined) ?? idea.priority,
-            notes: patch.notes !== undefined ? patch.notes.trim() : idea.notes,
-            updatedAt: nowIso(),
-          };
-        }),
-      }));
+    async (
+      id: string,
+      patch: Partial<IdeaInput & { status: ContentStatus }>,
+    ) => {
+      try {
+        const updated = await updateIdeaRecord(id, patch);
+        setData((current) =>
+          current
+            ? {
+                ...current,
+                ideas: current.ideas.map((idea) =>
+                  idea.id === id ? updated : idea,
+                ),
+              }
+            : current,
+        );
+        setError(null);
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Failed to update idea";
+        setError(message);
+        throw err;
+      }
     },
-    [updateData],
+    [],
   );
 
-  const deleteIdea = useCallback(
-    (id: string) => {
-      updateData((current) => ({
-        ...current,
-        ideas: current.ideas.filter((idea) => idea.id !== id),
-        variations: current.variations.filter((v) => v.ideaId !== id),
-        scheduledPosts: current.scheduledPosts.filter((p) => p.ideaId !== id),
-      }));
-    },
-    [updateData],
-  );
+  const deleteIdea = useCallback(async (id: string) => {
+    try {
+      await deleteIdeaRecord(id);
+      setData((current) =>
+        current
+          ? {
+              ...current,
+              ideas: current.ideas.filter((idea) => idea.id !== id),
+              variations: current.variations.filter((v) => v.ideaId !== id),
+              scheduledPosts: current.scheduledPosts.filter(
+                (p) => p.ideaId !== id,
+              ),
+            }
+          : current,
+      );
+      setError(null);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to delete idea";
+      setError(message);
+      throw err;
+    }
+  }, []);
 
   const setIdeaStatus = useCallback(
-    (id: string, status: ContentStatus) => {
-      updateIdea(id, { status });
+    async (id: string, status: ContentStatus) => {
+      await updateIdea(id, { status });
     },
     [updateIdea],
   );
@@ -295,7 +356,11 @@ export function ContentStoreProvider({ children }: { children: ReactNode }) {
   const updateVariation = useCallback(
     (ideaId: string, format: ContentFormat, body: string) => {
       const timestamp = nowIso();
-      updateData((current) => {
+      const key = `${ideaId}:${format}`;
+
+      setData((current) => {
+        if (!current) return current;
+
         const existing = current.variations.find(
           (v) => v.ideaId === ideaId && v.format === format,
         );
@@ -335,125 +400,209 @@ export function ContentStoreProvider({ children }: { children: ReactNode }) {
           ),
         };
       });
+
+      const existingTimer = variationTimers.current.get(key);
+      if (existingTimer) clearTimeout(existingTimer);
+
+      const timer = setTimeout(async () => {
+        variationTimers.current.delete(key);
+        try {
+          const saved = await upsertVariationRecord(ideaId, format, body);
+          setData((current) => {
+            if (!current) return current;
+            const withoutTemp = current.variations.filter(
+              (v) => !(v.ideaId === ideaId && v.format === format),
+            );
+            return {
+              ...current,
+              variations: [...withoutTemp, saved],
+            };
+          });
+
+          const currentIdea = dataRef.current?.ideas.find((i) => i.id === ideaId);
+          if (body.trim() && currentIdea?.status === "idea") {
+            const updatedIdea = await updateIdeaRecord(ideaId, {
+              status: "developing",
+            });
+            setData((current) =>
+              current
+                ? {
+                    ...current,
+                    ideas: current.ideas.map((idea) =>
+                      idea.id === ideaId ? updatedIdea : idea,
+                    ),
+                  }
+                : current,
+            );
+          }
+          setError(null);
+        } catch (err) {
+          setError(
+            err instanceof Error ? err.message : "Failed to save variation",
+          );
+        }
+      }, 400);
+
+      variationTimers.current.set(key, timer);
     },
-    [updateData],
+    [],
   );
 
-  const schedulePost = useCallback(
-    (input: ScheduleInput) => {
-      const timestamp = nowIso();
-      let created!: ScheduledPost;
+  const schedulePost = useCallback(async (input: ScheduleInput) => {
+    try {
+      const current = dataRef.current;
+      const idea = current?.ideas.find((item) => item.id === input.ideaId);
+      const localVariation =
+        current?.variations.find(
+          (v) => v.ideaId === input.ideaId && v.format === input.format,
+        ) ?? null;
 
-      updateData((current) => {
-        const idea = current.ideas.find((item) => item.id === input.ideaId);
-        const variation =
-          current.variations.find(
-            (v) => v.ideaId === input.ideaId && v.format === input.format,
-          ) ?? null;
+      const variation = await upsertVariationRecord(
+        input.ideaId,
+        input.format,
+        localVariation?.body ?? "",
+      );
 
-        created = {
-          id: createId(),
-          ideaId: input.ideaId,
-          contentVariationId: variation?.id ?? null,
-          platform: input.platform,
-          format: input.format,
-          title: input.title?.trim() || idea?.title || "Untitled",
-          scheduledAt: input.scheduledAt,
-          status: "scheduled",
-          createdAt: timestamp,
-          updatedAt: timestamp,
-        };
-
-        return {
-          ...current,
-          scheduledPosts: [...current.scheduledPosts, created],
-          ideas: current.ideas.map((item) =>
-            item.id === input.ideaId
-              ? {
-                  ...item,
-                  status:
-                    item.status === "published" ? item.status : "scheduled",
-                  updatedAt: timestamp,
-                }
-              : item,
-          ),
-        };
+      setData((prev) => {
+        if (!prev) return prev;
+        const withoutTemp = prev.variations.filter(
+          (v) => !(v.ideaId === input.ideaId && v.format === input.format),
+        );
+        return { ...prev, variations: [...withoutTemp, variation] };
       });
 
+      const created = await createScheduledPostRecord({
+        ideaId: input.ideaId,
+        contentVariationId: variation.id,
+        platform: input.platform,
+        format: input.format,
+        title: input.title?.trim() || idea?.title || "Untitled",
+        scheduledAt: input.scheduledAt,
+      });
+
+      let updatedIdea: Idea | null = null;
+      if (idea && idea.status !== "published") {
+        updatedIdea = await updateIdeaRecord(input.ideaId, {
+          status: "scheduled",
+        });
+      }
+
+      setData((prev) =>
+        prev
+          ? {
+              ...prev,
+              scheduledPosts: [...prev.scheduledPosts, created],
+              ideas: updatedIdea
+                ? prev.ideas.map((item) =>
+                    item.id === input.ideaId ? updatedIdea! : item,
+                  )
+                : prev.ideas,
+            }
+          : prev,
+      );
+      setError(null);
       return created;
-    },
-    [updateData],
-  );
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to schedule post";
+      setError(message);
+      throw err;
+    }
+  }, []);
 
   const updateScheduledPost = useCallback(
-    (
+    async (
       id: string,
       patch: Partial<
         Pick<ScheduledPost, "scheduledAt" | "status" | "platform" | "format" | "title">
       >,
     ) => {
-      const timestamp = nowIso();
-      updateData((current) => {
-        const target = current.scheduledPosts.find((post) => post.id === id);
-        const scheduledPosts = current.scheduledPosts.map((post) =>
-          post.id === id
-            ? {
-                ...post,
-                ...patch,
-                title: patch.title?.trim() ?? post.title,
-                updatedAt: timestamp,
-              }
-            : post,
-        );
+      try {
+        const updated = await updateScheduledPostRecord(id, patch);
+        let publishedIdea: Idea | null = null;
 
-        const ideas =
-          target && patch.status === "published"
-            ? current.ideas.map((idea) =>
-                idea.id === target.ideaId
-                  ? { ...idea, status: "published" as const, updatedAt: timestamp }
-                  : idea,
-              )
-            : current.ideas;
+        if (patch.status === "published") {
+          const ideaId = updated.ideaId;
+          publishedIdea = await updateIdeaRecord(ideaId, {
+            status: "published",
+          });
+        }
 
-        return { ...current, scheduledPosts, ideas };
-      });
+        setData((current) => {
+          if (!current) return current;
+          return {
+            ...current,
+            scheduledPosts: current.scheduledPosts.map((post) =>
+              post.id === id ? updated : post,
+            ),
+            ideas: publishedIdea
+              ? current.ideas.map((idea) =>
+                  idea.id === publishedIdea!.id ? publishedIdea! : idea,
+                )
+              : current.ideas,
+          };
+        });
+        setError(null);
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Failed to update scheduled post";
+        setError(message);
+        throw err;
+      }
     },
-    [updateData],
+    [],
   );
 
-  const deleteScheduledPost = useCallback(
-    (id: string) => {
-      updateData((current) => ({
-        ...current,
-        scheduledPosts: current.scheduledPosts.filter((post) => post.id !== id),
-      }));
-    },
-    [updateData],
-  );
+  const deleteScheduledPost = useCallback(async (id: string) => {
+    try {
+      await deleteScheduledPostRecord(id);
+      setData((current) =>
+        current
+          ? {
+              ...current,
+              scheduledPosts: current.scheduledPosts.filter(
+                (post) => post.id !== id,
+              ),
+            }
+          : current,
+      );
+      setError(null);
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to delete scheduled post";
+      setError(message);
+      throw err;
+    }
+  }, []);
 
-  const updatePillar = useCallback(
-    (id: string, name: string) => {
-      const trimmed = name.trim();
-      if (!trimmed) return;
-      updateData((current) => ({
-        ...current,
-        pillars: current.pillars.map((pillar) =>
-          pillar.id === id
-            ? {
-                ...pillar,
-                name: trimmed,
-                slug: trimmed.toLowerCase().replace(/\s+/g, "-"),
-              }
-            : pillar,
-        ),
-      }));
-    },
-    [updateData],
-  );
+  const updatePillar = useCallback(async (id: string, name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    try {
+      const updated = await updatePillarRecord(id, trimmed);
+      setData((current) =>
+        current
+          ? {
+              ...current,
+              pillars: current.pillars.map((pillar) =>
+                pillar.id === id ? updated : pillar,
+              ),
+            }
+          : current,
+      );
+      setError(null);
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to update pillar";
+      setError(message);
+      throw err;
+    }
+  }, []);
 
   const value = useMemo<ContentStoreValue>(
     () => ({
-      ready: Boolean(data),
+      ready,
+      error,
       pillars: data?.pillars ?? [],
       ideas: data?.ideas ?? [],
       variations: data?.variations ?? [],
@@ -472,8 +621,11 @@ export function ContentStoreProvider({ children }: { children: ReactNode }) {
       updateScheduledPost,
       deleteScheduledPost,
       updatePillar,
+      reload,
     }),
     [
+      ready,
+      error,
       data,
       getIdea,
       getPillar,
@@ -489,6 +641,7 @@ export function ContentStoreProvider({ children }: { children: ReactNode }) {
       updateScheduledPost,
       deleteScheduledPost,
       updatePillar,
+      reload,
     ],
   );
 

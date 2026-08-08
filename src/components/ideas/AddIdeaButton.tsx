@@ -32,11 +32,13 @@ export function AddIdeaButton({
           submitLabel="Create idea"
           onCancel={() => setOpen(false)}
           onSubmit={(input) => {
-            const idea = createIdea(input);
-            setOpen(false);
-            if (openCreator) {
-              router.push(`/ideas/${idea.id}`);
-            }
+            void (async () => {
+              const idea = await createIdea(input);
+              setOpen(false);
+              if (openCreator) {
+                router.push(`/ideas/${idea.id}`);
+              }
+            })();
           }}
         />
       </Modal>

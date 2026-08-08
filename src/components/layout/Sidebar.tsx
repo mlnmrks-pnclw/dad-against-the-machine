@@ -64,7 +64,7 @@ export function Sidebar() {
       </nav>
 
       <div className="border-t border-ink-800 px-5 py-4 text-xs text-ink-500">
-        Local MVP · Supabase-ready
+        Synced with Supabase
       </div>
     </aside>
   );

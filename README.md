@@ -7,8 +7,8 @@ Workflow: **Idea → Creation → Production → Scheduling → Published**
 ## Stack
 
 - Next.js (App Router) + TypeScript + Tailwind
-- Local browser storage for immediate use (MVP)
-- Supabase schema ready in `supabase/schema.sql`
+- Supabase as the primary database
+- Schema in `supabase/schema.sql`
 
 ## Run locally
 
@@ -19,7 +19,7 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-## Supabase (optional)
+## Supabase
 
 1. Create a Supabase project
 2. Run `supabase/schema.sql` in the SQL editor
@@ -27,10 +27,8 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ```bash
 NEXT_PUBLIC_SUPABASE_URL=...
-NEXT_PUBLIC_SUPABASE_ANON_KEY=...
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=...
 ```
-
-The UI currently persists to local storage so you can use the system immediately. The schema matches the app data model for a clean migration later.
 
 ## Sections
 
